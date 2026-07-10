@@ -1,15 +1,14 @@
 # teamgent-cli-skill
 
-[Codex](https://github.com/openai/codex) skill：通过自带的 Python CLI 操作任意 Teamgent 部署，管理 Workspace、Project、Agent、对话、Run 和 Runtime。
+Vendor-neutral agent skill：通过自带的 Python CLI 操作任意 Teamgent 部署，管理 Workspace、Project、Agent、对话、Run 和 Runtime。`SKILL.md` 的 front matter 兼容主流 agent runtime（Codex CLI、Claude Code、OpenCode 等），克隆到任意位置都可直接加载。
 
-CLI 脚本路径解析基于 `SKILL.md` 所在目录，不绑定任何特定部署或机器路径，克隆到任意位置都可直接使用。
+CLI 脚本路径解析基于 `SKILL.md` 所在目录，不绑定任何特定部署或机器路径。
 
 ## 仓库内容
 
 | 文件 | 说明 |
 | --- | --- |
-| `SKILL.md` | 给 Codex agent 使用的 skill 元数据与说明 |
-| `agents/openai.yaml` | Codex agent 展示配置（display_name、default_prompt 等） |
+| `SKILL.md` | Skill 元数据与使用说明（带 front matter） |
 | `scripts/teamgentctl.py` | 通用 Teamgent CLI，零第三方依赖（仅使用 Python 标准库） |
 | `.gitignore` | Python 忽略项 |
 
@@ -71,16 +70,26 @@ CI 或临时环境可直接设置 `TEAMGENT_SESSION` 环境变量，避免落盘
 | `TEAMGENT_CONFIG` | 配置文件路径覆盖 |
 | `TEAMGENT_CREDENTIALS` | 凭据文件路径覆盖 |
 
-## 安装到 Codex skill 目录
+## 安装（加载到 agent runtime）
 
-把仓库克隆到 Codex 的 skill 加载路径即可，例如：
+将仓库克隆或软链接到你的 agent runtime 的 skill 加载目录即可。`SKILL.md` 里的 `name: teamgent-ops` 决定了 skill 的注册名。
+
+常见 agent runtime 的默认加载路径：
+
+| Agent runtime | 默认 skill 目录 |
+| --- | --- |
+| Codex CLI | `~/.codex/skills/teamgent-ops` |
+| Claude Code | `~/.claude/skills/teamgent-ops` |
+| OpenCode / OhMyOpenCode | `~/.config/opencode/skills/teamgent-ops` 或项目内 `.opencode/skills/teamgent-ops` |
+
+示例（Codex CLI，其他 runtime 替换路径即可）：
 
 ```bash
 git clone https://github.com/kapelame/teamgent-cli-skill.git \
   ~/.codex/skills/teamgent-ops
 ```
 
-或软链接：
+或软链接到已存在的克隆：
 
 ```bash
 ln -s /path/to/teamgent-cli-skill ~/.codex/skills/teamgent-ops

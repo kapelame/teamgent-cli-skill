@@ -1,4 +1,0 @@
-interface:
-  display_name: "Teamgent CLI"
-  short_description: "通过通用 CLI 管理 Teamgent 工作区、Agent 与 Runtime"
-  default_prompt: "使用 $teamgent-ops 配置 Teamgent 登录并检查 Agent Run 的运行状态。"
