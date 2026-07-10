@@ -1,0 +1,4 @@
+interface:
+  display_name: "Teamgent 运维"
+  short_description: "通过本地命令管理 Agent、对话、Run 与 Runtime"
+  default_prompt: "使用 $teamgent-ops 查看 Teamgent 中 Octopatch 的运行状态并处理异常。"
