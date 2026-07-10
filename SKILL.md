@@ -121,23 +121,3 @@ teamgentctl bind-runtime <project_agent_id> <runtime_id>
 teamgentctl api GET '/api/v1/...'
 teamgentctl api POST '/api/v1/...' '{"key":"value"}'
 ```
-
-不要猜测写接口。先用 GET 读取对象，再进行最小修改。
-
-## Octopatch 定时任务
-
-Teamgent 当前没有内置 Cron API。`com.kape.teamgent.octopatch.scheduler` 每 60 秒读取 `~/.config/teamgentctl/octopatch-schedule.json`，到点后向 Teamgent 的“Octopatch 定时任务”对话发送模式指令；代码执行和日志仍属于 Teamgent Agent Run。
-
-```bash
-launchctl print "gui/$(id -u)/com.kape.teamgent.octopatch.scheduler"
-tail -50 ~/Library/Logs/teamgent-octopatch/scheduler.log
-tail -50 ~/Library/Logs/teamgent-octopatch/scheduler.error.log
-```
-
-手动补跑单个模式：
-
-```bash
-~/.local/bin/teamgent-octopatch-schedule <mode> --force
-```
-
-再用 `teamgentctl runs` 和 `teamgentctl run <run_id>` 确认结果。Stewardhouse 的旧 Octopatch Cron 已停用，不要重新开启。
