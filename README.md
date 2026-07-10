@@ -47,6 +47,37 @@ python3 scripts/teamgentctl.py agents <project_id>
 - **Runtime**：`daemon-status`、`daemon-logs`、`daemon-stop`
 - **逃生口**：`api`（直接调用已确认的 Teamgent 路由，仅在子命令未覆盖时使用）
 
+## 创建 Project Agent（高级）
+
+`agents` 子命令只支持 list，**创建必须走 `api POST`**。SKILL.md 里有完整 schema 和陷阱清单；最小可用 payload：
+
+```bash
+python3 scripts/teamgentctl.py api POST \
+  "/api/v1/workspaces/<workspace_id>/projects/<project_id>/agents" \
+  '{
+    "name": "<agent_name>",
+    "connector_type": "agent_daemon",
+    "default_model_id": "<model_uuid>",
+    "config": {
+      "agent_kind": "codex",
+      "daemon_mode": "local",
+      "device_id": "<runtime_uuid>",
+      "work_dir": "/root/workspace/"
+    }
+  }'
+```
+
+**易踩的坑**：
+
+1. **POST 路径比 GET 多一层 workspace**：列表用 `GET /api/v1/projects/<p>/agents` 是 200；POST 同路径是 405，必须 `/api/v1/workspaces/<ws>/projects/<p>/agents`。
+2. **字段名**：`default_model_id` 不是 `model_id`（在 payload 顶层）。
+3. **禁传字段**：顶层 `runtime` 字段直接 422；runtime 信息应放在 `config.daemon_mode` + `config.device_id` 里。
+4. **device_id === runtime.id**：`daemon_mode=local` 时 server 会自动 mirror `config.device_id` 到 `project_agents.runtime_id`。
+5. **server 会丢弃**：`model_id` / `profile.*` / `profile.skills` 这些写在 `config` 里的字段不会被持久化；server 只认 schema 关心的字段。
+6. **schema 一致性**：`config.agent_kind` 必须和 model 的 provider 类型匹配 —— `claude_code` 配 anthropic-compatible 模型；`codex` / `opencode` 配 openai-compatible。
+
+需要 `model_id` / `runtime_id` 时先用 `agents` / `runtimes` 列出现有，再 `configure` 保存默认。
+
 ## 持久鉴权机制
 
 `login` 子命令会按下表优先级自动保存 `teamgent_session`，后续所有命令无需任何环境变量即可鉴权：
@@ -130,6 +161,8 @@ ln -s /path/to/teamgent-cli-skill ~/.codex/skills/teamgent-ops
 | `无法连接 Teamgent` | `configure --url` 是否正确；网络/DNS 是否通 |
 | 找不到 `tg-daemon` | 加进 `PATH`，或 `configure --tg-daemon`，或 `TG_DAEMON` |
 | Linux 上没有 keyring | 安装 `secret-tool`（libsecret），否则降级到 0600 凭据文件 |
+| 创建 Agent 报 `405 Method Not Allowed` | POST 路由比 GET 多一层 workspace；用 `/api/v1/workspaces/<ws>/projects/<p>/agents`，不是 `/api/v1/projects/<p>/agents` |
+| 创建 Agent 报 `422: runtime is no longer accepted` | payload 顶层有 `runtime` 字段；改成 `config.daemon_mode` + `config.device_id` |
 | API 调用失败 | `api` 子命令仅在子命令未覆盖时使用；先 `GET` 读对象再最小修改 |
 
 ## 开发

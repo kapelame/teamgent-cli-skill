@@ -162,3 +162,66 @@ python3 <skill-dir>/scripts/teamgentctl.py bind-runtime <project_agent_id> <runt
 python3 <skill-dir>/scripts/teamgentctl.py api GET '/api/v1/...'
 python3 <skill-dir>/scripts/teamgentctl.py api POST '/api/v1/...' '{"key":"value"}'
 ```
+
+## 创建 Project Agent
+
+`agents` 子命令**只支持 list**，创建 Project Agent 必须走 `api POST` escape hatch。
+以下是已确认可用的 schema（来自 Teamgent 后端 `routes.go` 的 `createAgent`）：
+
+```bash
+python3 <skill-dir>/scripts/teamgentctl.py api POST \
+  "/api/v1/workspaces/<workspace_id>/projects/<project_id>/agents" \
+  '{
+    "name": "<agent_name>",
+    "connector_type": "agent_daemon",
+    "default_model_id": "<model_uuid>",
+    "system_prompt": "<可选>",
+    "description": "<可选>",
+    "visibility": "workspace",
+    "config": {
+      "agent_kind": "codex",
+      "daemon_mode": "local",
+      "device_id": "<runtime_uuid>",
+      "work_dir": "/root/workspace/"
+    }
+  }'
+```
+
+### 必填与陷阱
+
+| 字段 | 是否必填 | 说明 |
+| --- | --- | --- |
+| `name` | **必填** | 缺则 `400: name and connector_type are required` |
+| `connector_type` | **必填** | 当前常用 `agent_daemon` |
+| `default_model_id` | 可选 | 注意是 `default_model_id`，**不是** `model_id` |
+| `Runtime` | **禁传** | 传了直接 `422: runtime is no longer accepted; use config.daemon_mode, config.device_id, and config.agent_kind for agent_daemon agents` |
+| `config.daemon_mode` | 必填 | `local` = 用开发机 tg-daemon；`sandbox` = server 自动 Acquire |
+| `config.device_id` | local 必填 | **同时也是 `runtime.id`**；server 收到 `daemon_mode=local` 后会自动 mirror 到 `project_agents.runtime_id` |
+| `config.agent_kind` | 必填 | `codex` / `claude_code` / `opencode` —— 必须和 model 的 provider 类型匹配 |
+| `config.work_dir` | 可选 | local daemon 上的工作目录 |
+| `slug` | 留空 | server 自动生成 `agent-<8hex>` |
+
+### 路径陷阱：POST 比 GET 多一层 workspace
+
+- `GET /api/v1/projects/<project_id>/agents` — 列表，200
+- `POST /api/v1/projects/<project_id>/agents` — 405（不允许）
+- `POST /api/v1/workspaces/<workspace_id>/projects/<project_id>/agents` — 201（创建）
+
+如果只记住了 GET 路径去 POST，会拿到 405 而非 404，需要切到完整路径。
+
+### server 会丢弃的 config 字段
+
+POST 后 server 只保留它 schema 关心的 config 字段。即使 payload 里写了
+`model_id` / `profile.model_id` / `profile.skills` / `profile.capabilities`，
+这些**不会**被持久化；server 用的是 `default_model_id`（顶层）和 `config.agent_kind`。
+要修改 model 或绑定 skill，走 `PATCH` 路由（见 Teamgent 后端 `updateAgent`）。
+
+### 失败排查
+
+| 响应 | 原因 | 处理 |
+| --- | --- | --- |
+| `400: name and connector_type are required` | 缺 name 或 connector_type | 补字段 |
+| `405 Method Not Allowed` | 用了 GET 路径 | 切到 `/api/v1/workspaces/<ws>/projects/<p>/agents` |
+| `422: runtime is no longer accepted` | payload 顶层有 `runtime` 字段 | 删掉，移到 `config.daemon_mode` + `config.device_id` |
+| `422: visibility/binding inconsistent` | `visibility=public` 时带了个人凭证 | 改 `visibility=workspace` 或移除个人 credential |
+| `401: unauthenticated` | cookie 失效 | 重跑 `login` |
