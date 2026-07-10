@@ -40,9 +40,13 @@ python3 <skill-dir>/scripts/teamgentctl.py configure \
 - `TG_DAEMON`
 - `TEAMGENT_CONFIG_DIR`
 
-## 获取登录 Session
+## 登录（持久鉴权）
 
-`teamgent_session` 是 Teamgent 登录后设置的 HttpOnly cookie。按以下步骤获取：
+**`login` 子命令是一次性操作**：粘贴一次 cookie 后，CLI 会自动验证并把 session
+保存到系统凭据存储；之后所有命令自动读取，**不需要再次粘贴**。
+
+`teamgent_session` 是 Teamgent 登录后设置的 HttpOnly cookie，不能通过
+`document.cookie` 读取。按以下步骤获取并完成持久登录：
 
 1. 打开 `<teamgent_url>/login` 并完成部署提供的网页登录流程。
 2. 打开浏览器开发者工具。
@@ -57,18 +61,53 @@ python3 <skill-dir>/scripts/teamgentctl.py configure \
 python3 <skill-dir>/scripts/teamgentctl.py login
 ```
 
-HttpOnly cookie 不能通过 `document.cookie` 读取。CLI 会先调用 `GET /api/v1/me`
-验证凭证，再优先保存到 macOS Keychain 或 Linux Secret Service；两者都不可用时，
-保存到权限为 `0600` 的本地凭据文件并明确告警。CI 或临时环境可只设置
-`TEAMGENT_SESSION`，避免落盘。
+CLI 会先调用 `GET /api/v1/me` 验证凭证，再按下表优先级保存：
 
-验证登录：
+| 优先级 | 后端 | 适用 |
+| --- | --- | --- |
+| 1 | **macOS Keychain**（service `teamgentctl`） | macOS 桌面（推荐） |
+| 2 | **Linux Secret Service**（`secret-tool`） | Linux 桌面（推荐） |
+| 3 | **本地文件**（权限 `0600`，明确告警） | 无 keyring 的服务器 / 容器 |
+
+成功后所有命令（`me`、`workspaces`、`agents`、`runs`、`send` 等）自动从凭据
+存储读取，无需再粘贴 cookie。
+
+### 重新登录 / 切换账号
+
+返回 401、cookie 过期或想换账号时，重跑 `login` 即可（会覆盖旧条目）。需要清掉
+当前账号的本地凭据时：
+
+```bash
+python3 <skill-dir>/scripts/teamgentctl.py logout
+```
+
+`logout` 只删除当前部署的本地凭据，不影响浏览器侧登录状态。
+
+### 临时覆盖（不写入磁盘）
+
+CI、临时容器或不想落盘的场景，直接设置 `TEAMGENT_SESSION` 环境变量，所有命令
+会优先用它的值（**不写文件、不进 keychain**）：
+
+```bash
+TEAMGENT_SESSION=<cookie_value> python3 <skill-dir>/scripts/teamgentctl.py me
+```
+
+### 验证持久化是否生效
 
 ```bash
 python3 <skill-dir>/scripts/teamgentctl.py me
 ```
 
-返回 401 时重新执行 `login`。执行 `logout` 只删除当前部署的本地凭据。
+不需要带任何环境变量。返回 `401` 表示凭据未找到或已过期，重新执行 `login`。
+
+### 排查"明明 login 成功却还要重粘"
+
+确认 `login` 报告的"session 已保存到 ..."是 **macOS Keychain / Secret Service**，
+而不是"权限为 0600 的凭据文件"。如果是文件降级，检查：
+
+- macOS：系统设置 -> 钥匙串访问 -> 搜索 `teamgentctl`，确认条目存在且未被锁定。
+- Linux：安装 `libsecret-1-0` / `gnome-keyring` / `KeePassXC` 等能提供 Secret
+  Service D-Bus 接口的服务，并确保用户会话中它在运行。
 
 ## 查询平台
 

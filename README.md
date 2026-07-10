@@ -22,20 +22,20 @@ CLI 脚本路径解析基于 `SKILL.md` 所在目录，不绑定任何特定部�
 ## 快速开始
 
 ```bash
-# 1. 配置部署地址
+# 1. 配置部署地址（仅首次需要）
 python3 scripts/teamgentctl.py configure --url https://your-teamgent.example.com
 
-# 2. 登录并保存 session（按提示粘贴浏览器中的 teamgent_session cookie）
+# 2. 登录 — 粘贴一次 cookie，CLI 自动存到系统凭据存储（keychain / Secret Service / 0600 文件）
 python3 scripts/teamgentctl.py login
 
-# 3. 验证登录
+# 3. 之后所有命令自动读取，**不需要再粘贴**
 python3 scripts/teamgentctl.py me
-
-# 4. 查询平台资源
 python3 scripts/teamgentctl.py workspaces
 python3 scripts/teamgentctl.py projects <workspace_id>
 python3 scripts/teamgentctl.py agents <project_id>
 ```
+
+`login` 是**一次性**操作：粘贴 cookie 后 CLI 先 `GET /api/v1/me` 验证，再写到 macOS Keychain / Linux Secret Service / 0600 文件。之后所有 `me`、`workspaces`、`agents`、`runs`、`send` 等都自动读取，**不再需要粘贴或带环境变量**。
 
 ## 命令一览
 
@@ -47,15 +47,41 @@ python3 scripts/teamgentctl.py agents <project_id>
 - **Runtime**：`daemon-status`、`daemon-logs`、`daemon-stop`
 - **逃生口**：`api`（直接调用已确认的 Teamgent 路由，仅在子命令未覆盖时使用）
 
-## 凭证安全
+## 持久鉴权机制
 
-`teamgent_session` 是 HttpOnly cookie，CLI 不会通过命令行参数、配置文件、日志、Issue 或 Git 记录它。`login` 子命令使用隐藏输入读取 cookie，并按以下优先级保存：
+`login` 子命令会按下表优先级自动保存 `teamgent_session`，后续所有命令无需任何环境变量即可鉴权：
 
-1. **macOS Keychain**（`security find-generic-password`，service = `teamgentctl`）
-2. **Linux Secret Service**（`secret-tool`）
-3. **本地文件降级**（路径由 `TEAMGENT_CREDENTIALS` 或 `TEAMGENT_CONFIG_DIR` 决定，权限强制 `0600`，并明确告警）
+| 优先级 | 后端 | 适用 | 验证命令 |
+| --- | --- | --- | --- |
+| 1 | **macOS Keychain**（service `teamgentctl`） | macOS 桌面（推荐） | `security find-generic-password -s teamgentctl` |
+| 2 | **Linux Secret Service**（`secret-tool`） | Linux 桌面（推荐） | `secret-tool lookup service teamgentctl account <url>` |
+| 3 | **本地文件降级**（`0600`，明确告警） | 无 keyring 的服务器 / 容器 | `cat $(TEAMGENT_CREDENTIALS 优先) ~/.config/teamgentctl/credentials.json` |
 
-CI 或临时环境可直接设置 `TEAMGENT_SESSION` 环境变量，避免落盘。
+常见操作：
+
+```bash
+# 持久登录（粘贴 cookie，自动存到 keychain / secret-tool / 0600 文件）
+python3 scripts/teamgentctl.py login
+
+# 验证：返回 401 表示凭据不存在或已过期 → 重跑 login
+python3 scripts/teamgentctl.py me
+
+# 重新登录 / 切换账号（覆盖旧条目）
+python3 scripts/teamgentctl.py login
+
+# 清掉当前部署的本地凭据（不影响浏览器侧登录）
+python3 scripts/teamgentctl.py logout
+```
+
+**临时覆盖**（CI / 容器 / 不想落盘）：直接设 `TEAMGENT_SESSION` 环境变量，所有命令优先用它（不会写文件或 keychain）：
+
+```bash
+TEAMGENT_SESSION=<cookie_value> python3 scripts/teamgentctl.py me
+```
+
+## 安全约束
+
+CLI 不会通过命令行参数、配置文件、日志、Issue 或 Git 记录 cookie。`login` 子命令用隐藏输入（`getpass`）读取；存储强制 `0600`（文件降级路径）；`logout` 只清当前部署的本地凭据。
 
 ## 环境变量
 
